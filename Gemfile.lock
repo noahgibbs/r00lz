@@ -1,0 +1,24 @@
+PATH
+  remote: .
+  specs:
+    r00lz (0.1.0)
+      rack (~> 2.0.6)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    minitest (5.11.3)
+    rack (2.0.6)
+    rake (10.5.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  bundler (~> 1.16)
+  minitest (~> 5.0)
+  r00lz!
+  rake (~> 10.0)
+
+BUNDLED WITH
+   1.16.6
