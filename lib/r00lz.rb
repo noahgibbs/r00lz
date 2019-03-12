@@ -18,10 +18,17 @@ module R00lz
     end
   end
 
+  require "erb"
   class Controller
     attr_reader :env
     def initialize(env)
       @env = env
+    end
+
+    def render(name, b = binding())
+      template = "app/views/#{name}.html.erb"
+      e = ERB.new(File.read template)
+      e.result(b)
     end
   end
 
