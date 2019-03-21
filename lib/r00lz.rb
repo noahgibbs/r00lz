@@ -55,3 +55,27 @@ class Object
     Object.const_get(c)
   end
 end
+
+class FileModel
+  def initialize(fn)
+    @fn = fn
+    id = File.basename(fn,
+      ".json").to_i
+    cont = File.read fn
+    @hash = JSON.load cont
+  end
+
+  def [](field)
+    @hash[field.to_s]
+  end
+
+  def []=(field, val)
+    @hash[field.to_s] = val
+  end
+
+  def self.find(id)
+    self.new "data/#{id}.json"
+  rescue
+    nil
+  end
+end
