@@ -2,27 +2,46 @@ require "r00lz/version"
 module R00lz
   class App
     def call(env) # Like proc#call
-      kl, act = cont_and_act(env)
-      text = kl.new(env).send(act)
-      [200,
-       {'Content-Type' => 'text/html'},
-       [text]]
+      rack_app = get_rack_app(env)
+      unless rack_app
+        return [404, {}, ["Not Found!"]]
+      end
+      rack_app.call(env)
     end
 
-    def cont_and_act(env)
-      _, con, act, after =
-        env["PATH_INFO"].split('/', 4)
-      con = con.capitalize +
-        "Controller"
-      [Object.const_get(con), act]
+    def route(&block)
+      @route_obj ||= RouteObject.new
+      @route_obj.instance_eval(&block)
+    end
+
+    def get_rack_app(env)
+      raise "No routes!" unless @route_obj
+      @route_obj.check_url env["PATH_INFO"]
     end
   end
 
   require "erb"
   class Controller
     attr_reader :env
+    attr_reader :response
+
     def initialize(env)
       @env = env
+      @routing_params = {}  # Add this line!
+    end
+
+    def respond(text, status: 200, headers: {})
+      @response = [status, headers, [text].flatten]
+    end
+
+    def dispatch(action, rp = {})
+      @routing_params = rp
+      text = self.send(action)
+      @response || [200, {'Content-Type' => 'text/html'}, [text].flatten]
+    end
+
+    def self.action(act, rp = {})
+      proc { |e| self.new(e).dispatch(act, rp) }
     end
 
     def render(name, b = binding())
@@ -36,7 +55,7 @@ module R00lz
     end
 
     def params
-      request.params
+      request.params.merge @routing_params
     end
   end
 
@@ -47,6 +66,58 @@ module R00lz
       /([a-z\d])([A-Z])/,
       '\1_\2').downcase
   end
+
+  class RouteObject
+    def initialize
+      @rules = []
+    end
+
+    def match(url, dest=nil, **options)
+      regexp, vars = url_to_regexp_and_vars(url)
+      @rules.push({ regexp: Regexp.new("^/#{regexp}/?$"),
+        vars: vars, dest: dest, options: options })
+    end
+
+    def url_to_regexp_and_vars(url)
+      vars = []
+      parts = url.split("/").select { |p| !p.empty? }
+      regexp_parts = parts.map do |part|
+        if part[0] == ":"
+          vars << part[1..-1]
+          "([^/]+)"
+        elsif part[0] == "*"
+          vars << part[1..-1]
+          "(.*)"
+        else
+          part
+        end
+      end
+      [regexp_parts.join("/"), vars]
+    end
+
+    def check_url(url)
+      r = @rules.detect { |r| r[:regexp].match(url) }
+      return nil unless r
+
+      m = r[:regexp].match(url)
+      p = (r[:options][:default] || {}).dup
+      r[:vars].each_with_index { |v, i| p[v] = m.captures[i] }
+
+      return r[:dest] if r[:dest].respond_to?(:call)
+      dest = r[:dest] || "#{p["controller"]}##{p["action"]}"
+      get_dest dest, p
+    end
+
+    def get_dest(dest, routing_params = {})
+      if dest =~ /^([^#]+)#([^#]+)$/
+        name = $1.capitalize
+        con = Object.const_get("#{name}Controller")
+        return con.action($2, routing_params)
+      end
+      raise "No destination: #{dest.inspect}!"
+    end
+  end
+
 end
 
 class Object
